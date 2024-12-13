@@ -6,11 +6,15 @@ pub mod render;
 fn run(event_loop: EventLoop<()>, window: &Window) {
     let mut renderer = futures::executor::block_on(Renderer::new(&window));
 
-    let chunk = VoxelChunk::new(0, 0, 0);
+    let mut chunk = VoxelChunk::new(0, 0, 0);
+    chunk.set_voxel(1, 1, 1, 1);
+    chunk.set_voxel(2, 2, 2, 1);
+    chunk.set_voxel(3, 3, 3, 1);
     let (vertex_buffer, index_buffer, index_count) = renderer.create_chunk_mesh(&chunk);
+    
+    println!("{:?} {:?} {}", vertex_buffer, index_buffer, index_count);
 
     let pipeline = renderer.create_pipeline();
-
 
     let _ = event_loop.run(move |event, control_flow| {
         match event {

@@ -15,6 +15,12 @@ impl VoxelChunk {
         }
     }
 
+    pub fn set_voxel(&mut self, x: usize, y: usize, z: usize, value: u8) {
+        if x < CHUNK_SIZE && y < CHUNK_SIZE && z < CHUNK_SIZE {
+            self.data[x][y][z] = value;
+        }
+    }
+
     pub fn generate_mesh(&self) -> (Vec<f32>, Vec<u32>) {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();

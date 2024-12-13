@@ -68,6 +68,7 @@ impl<'a> Renderer<'a> {
 
     pub fn create_chunk_mesh(&self, chunk: &VoxelChunk) -> (wgpu::Buffer, wgpu::Buffer, u32) {
         let (vertices, indices) = chunk.generate_mesh();
+        println!("{:?} {:?}", vertices, indices);
 
         let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Chunk Vertex Buffer"),
