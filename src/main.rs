@@ -1,9 +1,22 @@
+use camera::Camera;
+use nalgebra::{Point3, Vector3};
 use render::{chunk::VoxelChunk, Renderer};
 use winit::{event::{ElementState, Event, KeyEvent, WindowEvent}, event_loop::EventLoop, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowBuilder}};
 
+pub mod camera;
 pub mod render;
 
 fn run(event_loop: EventLoop<()>, window: &Window) {
+    let camera = Camera {
+        eye: Point3::new(0.0, 5.0, 10.0),
+        target: Point3::new(0.0, 0.0, 0.0),
+        up: Vector3::y_axis().into_inner(),
+        aspect_ratio: window.inner_size().width as f32 / window.inner_size().height as f32,
+        fov: 45.0_f32.to_radians(),
+        znear: 0.1,
+        zfar: 100.0,
+    };
+
     let mut renderer = futures::executor::block_on(Renderer::new(&window));
 
     let mut chunk = VoxelChunk::new(0, 0, 0);
@@ -33,6 +46,9 @@ fn run(event_loop: EventLoop<()>, window: &Window) {
                     ..
                 } => control_flow.exit(),
                 WindowEvent::RedrawRequested => {
+                    let view_proj = camera.build_view_proj_matrix();
+                    renderer.update_camera(&view_proj);
+
                     renderer.render(&pipeline, &vertex_buffer, &index_buffer, index_count);
                 },
                 _ => {}

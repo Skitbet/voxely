@@ -1,4 +1,6 @@
+
 use chunk::VoxelChunk;
+use nalgebra::Matrix;
 use wgpu::{util::DeviceExt, Buffer};
 use winit::window::Window;
 
@@ -10,6 +12,8 @@ pub struct Renderer<'a> {
     pub queue: wgpu::Queue,
     pub surface: wgpu::Surface<'a>,
     pub config: wgpu::SurfaceConfiguration,
+    pub camera_buffer: wgpu::Buffer,
+    pub camera_bind_group: Option<wgpu::BindGroup>,
 } 
 
 impl<'a> Renderer<'a> {
@@ -58,15 +62,40 @@ impl<'a> Renderer<'a> {
 
         surface.configure(&device, &config);
 
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: &[0u8; 64],
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
         Renderer {
             device,
             queue,
             surface,
             config,
+            camera_buffer,
+            camera_bind_group: None,
         }
     }
 
-    pub fn create_chunk_mesh(&self, chunk: &VoxelChunk) -> (wgpu::Buffer, wgpu::Buffer, u32) {
+pub fn update_camera(&self, view_proj: &Matrix<f32, nalgebra::Const<4>, nalgebra::Const<4>, nalgebra::ArrayStorage<f32, 4, 4>>) {
+    // convert the matrix to a [f32; 16]
+    let view_proj_array: [f32; 16] = {
+        let slice = view_proj.as_slice(); // gives a slice of 16 f32 values
+        let mut array = [0.0; 16]; // init array to store the values
+        array.copy_from_slice(slice); // copy  slice values into the array
+        array
+    };
+
+    // Write to the buffer
+    self.queue.write_buffer(
+        &self.camera_buffer,
+        0,
+        bytemuck::cast_slice(&view_proj_array),
+    );
+}
+
+    pub fn create_chunk_mesh(&mut self, chunk: &VoxelChunk) -> (wgpu::Buffer, wgpu::Buffer, u32) {
         let (vertices, indices) = chunk.generate_mesh();
         println!("{:?} {:?}", vertices, indices);
 
@@ -85,7 +114,7 @@ impl<'a> Renderer<'a> {
         (vertex_buffer, index_buffer, indices.len() as u32)
     }
 
-    pub fn create_pipeline(&self) -> wgpu::RenderPipeline {
+    pub fn create_pipeline(&mut self) -> wgpu::RenderPipeline {
         let surface_format = self.config.format;
 
         // Load shader
@@ -94,10 +123,36 @@ impl<'a> Renderer<'a> {
             source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/shader.wgsl").into()),
         });
 
+        // create bind group layout for camera
+        let camera_bind_group_layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Camera Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+        // create bind group for camera buffer
+        self.camera_bind_group = Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Camera Bind Group"),
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: self.camera_buffer.as_entire_binding(),
+            }],
+        }));
+
+
         // Define the pipeline layout
         let pipeline_layout = self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[&camera_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -197,6 +252,7 @@ impl<'a> Renderer<'a> {
             });
         
             render_pass.set_pipeline(pipeline);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
             render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(0..index_count, 0, 0..1);
